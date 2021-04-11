@@ -1,0 +1,71 @@
+-- AAQ Anapa airport code
+-- 167,409,059,100 total amount table bookings is the same as in ticket_flights
+/*-- Fuel consumption:
+    Sukhoi Superjet-100 - 1700 per hour * SU9
+    Boeing 737-300 - 2400 per hour * 733
+  -- Average aviation fuel price for 2017 is 45710 RUB per 1000
+  -- Accrodring to https://otherreferats.allbest.ru/transport/00833927_0.html
+     Fuel takes only 18.9% of total flight expenses therefore my assumption is to count Fuel as this percentage and add remaining 81.1% to expenses 
+     in order to calculate more accurate flight expenses and net profit
+    */
+select
+    f.flight_id,
+    f.departure_airport,
+    f.arrival_airport,
+    f.aircraft_code,
+    (extract(hour from f.actual_arrival - f.actual_departure)*60
+    + extract(minute from f.actual_arrival - f.actual_departure)) flight_duration_in_minutes, -- Represents flight duration in minutes
+    count(case when tf.fare_conditions = 'Economy' then 1 else null end) economy_tickets_sold, -- Counts how many Economy tickets were sold
+    count(case when tf.fare_conditions = 'Business' then 1 else null end) business_tickets_sold, -- Counts how many Business tickets were sold
+    count(tf.ticket_no) tickets_sold,
+    avg(tf.amount) average_ticket_price,
+    case
+        when 
+            f.aircraft_code = '733'
+        then 
+            (extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (2400/60) * 45.710 -- Fuel consumption -- Fuel Price
+        when 
+            f.aircraft_code = 'SU9'
+        then 
+            (extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (1700/60) * 45.710 -- Fuel consumption -- Fuel Price
+    end as fuel_cost, -- Fuel price based on price provided by Russian Aviation Agency and the assumption of fuel consumption found on the internet
+    sum(tf.amount) total_revenue,
+    case
+        when 
+            f.aircraft_code = '733'
+        then
+            sum(tf.amount)
+            -(extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (2400/60) * 45.710 / 18.9 * 100 -- Fuel takes only 18.9% of total expenses, hence, remaing part is added
+        when 
+            f.aircraft_code = 'SU9'
+        then 
+            sum(tf.amount)
+            -(extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (1700/60) * 45.710 / 18.9 * 100 -- Fuel takes only 18.9% of total expenses, hence, remaing part is added
+    end as net_profit, -- Represents the net profit as REVENUE - EXPENSES
+    case
+        when 
+            f.aircraft_code = '733'
+        then
+            (sum(tf.amount)
+            -(extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (2400/60) * 45.710 / 18.9 * 100)/count(tf.ticket_no)
+        when 
+            f.aircraft_code = 'SU9'
+        then 
+            (sum(tf.amount)
+            -(extract(hour from f.actual_arrival - f.actual_departure)*60
+            + extract(minute from f.actual_arrival - f.actual_departure)) * (1700/60) * 45.710 / 18.9 * 100)/count(tf.ticket_no)
+    end as profit_per_passenger -- Average profit per sold ticket
+from
+    dst_project.flights f
+        join dst_project.ticket_flights tf on f.flight_id = tf.flight_id
+where
+    f.departure_airport = 'AAQ'
+    and (date_trunc('month', f.scheduled_departure) in ('2017-01-01','2017-02-01', '2017-12-01'))
+    and f.status not in ('Cancelled')
+group by
+    f.flight_id
